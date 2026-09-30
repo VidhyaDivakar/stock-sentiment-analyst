@@ -23,6 +23,7 @@
    - Point out the spinners: first fetching news, then asking the local model.
    - Read out the sentiment label and reasoning.
    - Open **Headlines analyzed**: "The model only sees these headlines, nothing else."
+   - *Tip:* `BA` gave a clear, well-reasoned "Positive" on 2026-09-30. Try a few tickers on presentation day and open with whichever gives the clearest result. News changes daily.
 2. **Slider.** "You can choose 3–10 headlines. More headlines give more context but a slower answer."
 3. **Edge case: bad ticker.** Type `ZZZZQ`: "ticker not found", no crash.
 4. **Edge case: empty input.** Click Analyze with no input: validation message, and no model call is wasted.
@@ -48,13 +49,16 @@ Mention the prompt design: the model must answer with `Sentiment:` / `Reasoning:
 
 ## 5. Challenges & next steps (~1–2 min)
 
-**Challenges** (fill in from your experience):
+**Challenges** (add your own experience):
 - Finding the right field for the headline in yfinance's news data (`content.title`)
-- Getting a small 3B model to follow the output format reliably
-- Telling "ticker doesn't exist" apart from "ticker has no news"
-- Results from `docs/llm_evaluation.md`: agreement rate and where the model got it wrong
+- Telling "ticker doesn't exist" apart from "ticker has no news" (solved with a price-history check)
+- **Data quality mattered more than the model.** yfinance often returns general market news: for INTC, none of the 5 headlines mentioned Intel, and for TSLA only 1 did. `BRT` even returned news about a *different* company that shares the symbol.
+- **The small model's mistakes.** It read "21% Above Fair Value" as positive for MSFT (it actually suggests overvalued), and it credited Amazon with an OpenAI headline.
+- **What worked.** The model followed the output format in 10 out of 10 runs, never predicted prices, and answered in about 5 seconds on a laptop.
+- Your agreement rate from `docs/llm_evaluation.md`: ___ / 10
 
 **What I'd improve next:**
+- Keep only headlines that mention the company before sending them to the model
 - A confidence score next to the label
 - Saving past queries in SQLite to track sentiment over time
 - Comparing several tickers side by side
