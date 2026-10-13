@@ -5,7 +5,7 @@ import pytest
 
 from history import MAX_RECENT, add_recent, load_recent
 from llm_client import LLMError, ask_llm
-from news_fetcher import NewsFetchError, get_headlines, is_valid_ticker, ticker_exists
+from news_fetcher import NewsFetchError, _about_pattern, get_headlines, is_valid_ticker, ticker_exists
 from prompt_templates import build_prompt
 from response_parser import parse_sentiment
 
@@ -58,6 +58,34 @@ def test_get_headlines_untagged_search_only_for_real_ticker(exists, expected):
         T.return_value.news = []
         S.return_value.news = [{"title": "A", "relatedTickers": ["BBDO"]}, {"title": "B"}]
         assert get_headlines("BBD", 5) == expected
+
+
+def test_get_headlines_keeps_only_those_naming_the_company():
+    with patch("news_fetcher.yf.Ticker") as T, patch("news_fetcher.yf.Search") as S:
+        T.return_value.news = []
+        S.return_value.quotes = [{"symbol": "GM", "longname": "General Motors Company"}]
+        S.return_value.news = [
+            {"title": "Stock Market Today: Dow Slips", "relatedTickers": ["GM"]},
+            {"title": "GM Plans 500 New Jobs", "relatedTickers": ["GM"]},
+            {"title": "General Electric Wins Order", "relatedTickers": ["GM"]},
+            {"title": "Why General Motors Gained Today", "relatedTickers": ["GM"]},
+            {"title": "GMC Trucks Recalled", "relatedTickers": ["GM"]},
+        ]
+        assert get_headlines("GM", 5) == ["GM Plans 500 New Jobs", "Why General Motors Gained Today"]
+
+
+@pytest.mark.parametrize("symbol, name, headline, expected", [
+    ("DIS", "The Walt Disney Company", "Disney CEO Makes Another Move", True),
+    ("XOM", "ExxonMobil Holdings Corporation", "Diesel Prices Surge and ExxonMobil Could Benefit", True),
+    ("LLY", "Eli Lilly and Company", "Fast delivery helps retailers", False),
+    ("BTC-USD", "Bitcoin USD", "BTC Price Stalls", True),
+    ("BAC", "Bank of America Corporation", "Bank Stocks Slide as Rates Rise", False),
+    ("F", "Ford Motor Company", "F-150 Sales Lift Ford", True),
+    ("F", "", "Anything at all", None),
+])
+def test_about_pattern(symbol, name, headline, expected):
+    pattern = _about_pattern(symbol, name)
+    assert (pattern and bool(pattern.search(headline))) == expected
 
 
 def test_get_headlines_network_error():
