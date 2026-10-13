@@ -12,6 +12,9 @@ __pycache__/
 .env
 .streamlit/secrets.toml
 
+# Local app data
+recent_searches.json
+
 # OS / editor
 .DS_Store
 Thumbs.db

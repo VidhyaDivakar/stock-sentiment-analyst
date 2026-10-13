@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import ollama
 import pytest
 
+from history import MAX_RECENT, add_recent, load_recent
 from llm_client import LLMError, ask_llm
 from news_fetcher import NewsFetchError, get_headlines, is_valid_ticker, ticker_exists
 from prompt_templates import build_prompt
@@ -10,12 +11,12 @@ from response_parser import parse_sentiment
 
 
 # --- is_valid_ticker ---
-@pytest.mark.parametrize("t", ["AAPL", "aapl", "AAPL ", "BRK-B"])
+@pytest.mark.parametrize("t", ["AAPL", "aapl", "AAPL ", "BRK-B", "BTC-USD", "^IXIC"])
 def test_valid_tickers(t):
     assert is_valid_ticker(t)
 
 
-@pytest.mark.parametrize("t", ["", "   ", "123", "AA PL", "TOOLONGTICKER", "AAPL;DROP"])
+@pytest.mark.parametrize("t", ["", "   ", "123", "AA PL", "TOOLONGTICKER", "AAPL;DROP", "^", "AA^PL"])
 def test_invalid_tickers(t):
     assert not is_valid_ticker(t)
 
@@ -33,9 +34,30 @@ def test_get_headlines_extracts_and_limits():
 
 @pytest.mark.parametrize("news", [None, [], [{}, {"content": None}, {"content": {}}]])
 def test_get_headlines_empty_or_malformed(news):
-    with patch("news_fetcher.yf.Ticker") as T:
+    with patch("news_fetcher.yf.Ticker") as T, patch("news_fetcher.yf.Search") as S:
         T.return_value.news = news
+        S.return_value.news = []
         assert get_headlines("ZZZZQ") == []
+
+
+def test_get_headlines_falls_back_to_search_for_this_ticker():
+    with patch("news_fetcher.yf.Ticker") as T, patch("news_fetcher.yf.Search") as S:
+        T.return_value.news = []
+        S.return_value.news = [
+            {"title": "A", "relatedTickers": ["AAPL", "MSFT"]},
+            {"title": "Other", "relatedTickers": ["QCOM"]},
+            {"title": "No tags"},
+            {"title": "B", "relatedTickers": ["AAPL"]},
+        ]
+        assert get_headlines("aapl", 5) == ["A", "B"]
+
+
+@pytest.mark.parametrize("exists, expected", [(True, ["A", "B"]), (False, [])])
+def test_get_headlines_untagged_search_only_for_real_ticker(exists, expected):
+    with patch("news_fetcher.yf.Ticker") as T, patch("news_fetcher.yf.Search") as S,             patch("news_fetcher.ticker_exists", return_value=exists):
+        T.return_value.news = []
+        S.return_value.news = [{"title": "A", "relatedTickers": ["BBDO"]}, {"title": "B"}]
+        assert get_headlines("BBD", 5) == expected
 
 
 def test_get_headlines_network_error():
@@ -103,3 +125,27 @@ def test_ask_llm_returns_content():
     with patch("llm_client.ollama.Client") as C:
         C.return_value.chat.return_value = {"message": {"content": "ok"}}
         assert ask_llm("hi") == "ok"
+
+
+# --- recent searches (temp file) ---
+def test_recent_newest_first_and_one_entry_per_ticker(tmp_path):
+    f = tmp_path / "recent.json"
+    add_recent("aapl", "Positive", f)
+    add_recent("TSLA", "Negative", f)
+    add_recent("AAPL ", "Neutral", f)
+    assert [(r["ticker"], r["label"]) for r in load_recent(f)] == [("AAPL", "Neutral"), ("TSLA", "Negative")]
+
+
+def test_recent_is_capped(tmp_path):
+    f = tmp_path / "recent.json"
+    for i in range(MAX_RECENT + 3):
+        add_recent("T" + chr(65 + i), "Neutral", f)
+    assert len(load_recent(f)) == MAX_RECENT
+
+
+@pytest.mark.parametrize("content", [None, "not json", '{"a": 1}', '[1, {"label": "x"}]'])
+def test_recent_missing_or_corrupt_file_is_empty(tmp_path, content):
+    f = tmp_path / "recent.json"
+    if content is not None:
+        f.write_text(content, encoding="utf-8")
+    assert load_recent(f) == []
