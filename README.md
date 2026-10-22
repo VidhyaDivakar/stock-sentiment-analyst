@@ -17,7 +17,11 @@ A small local app: enter a stock ticker, it pulls recent news headlines with `yf
 
 1. Install [Ollama](https://ollama.com/download) and start it.
 2. `ollama pull llama3.2:3b`
-3. `uv sync`
+3. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run `uv sync`
+
+> Moving to a new machine or Windows account? Delete `.venv/` and run `uv sync` again. The virtual environment isn't portable.
+
+Optional sanity check that Ollama responds: `uv run python scratch_ollama.py` (the Milestone 0 script).
 
 See the [setup and troubleshooting guide](docs/setup-guide.md) for checks after each step and fixes for common errors.
 
@@ -35,6 +39,8 @@ Open the local URL shown in the terminal.
 uv run pytest
 ```
 
+The unit tests mock yfinance and Ollama, so they run offline. The manual end-to-end checks are recorded in [docs/e2e_test_results.md](docs/e2e_test_results.md).
+
 ## Documentation
 
 | Guide | What it covers |
@@ -44,6 +50,9 @@ uv run pytest
 | [Architecture](docs/architecture.md) | Modules, data flow, and error handling |
 | [Prompt design](docs/prompt-design.md) | Prompt rationale, settings, and how to evaluate output quality |
 | [Testing](docs/testing.md) | Automated test coverage and manual end-to-end checks |
+| [E2E test results](docs/e2e_test_results.md) | Recorded results of the manual end-to-end checks |
+| [LLM evaluation](docs/llm_evaluation.md) | Human-vs-model sentiment comparison across several tickers |
+| [Presentation script](docs/presentation_script.md) | Demo script for the project presentation |
 
 ## Workflow
 
@@ -67,21 +76,39 @@ flowchart TD
 | File | Role |
 | --- | --- |
 | `app.py` | Streamlit UI, wires the pipeline together |
-| `news_fetcher.py` | Ticker validation + yfinance headlines |
+| `news_fetcher.py` | Ticker validation, ticker-exists check, yfinance headlines |
 | `prompt_templates.py` | Prompt builder |
 | `llm_client.py` | Ollama call + friendly errors |
 | `response_parser.py` | Extracts label + reasoning, falls back to "Unclear" |
+| `scratch_ollama.py` | Milestone 0 check that Ollama responds |
 | `tests/` | Unit tests (yfinance/Ollama mocked) |
-| `docs/` | Setup, tutorial, architecture, prompt design, and testing guides |
+| `docs/` | Setup, tutorial, architecture, prompt design, testing, E2E results, LLM evaluation, presentation script, screenshots |
 
 ## Example
 
 Input: `AAPL`
 
-Output: `Sentiment: Neutral` — *The headlines mention changes and releases, but the overall tone is not clearly positive or negative.*
+Output: `Sentiment: Neutral`. *The headlines mention changes and releases, but the overall tone is not clearly positive or negative.*
+
+![Example analysis for AAPL](docs/screenshots/demo_aapl.png)
+
+## Error handling
+
+| Situation | What the user sees |
+| --- | --- |
+| Empty or malformed ticker | Validation error, no network/LLM call |
+| Ticker doesn't exist | "Ticker '…' not found" |
+| Real ticker, no recent news | "No recent news found" |
+| No internet / yfinance failure | "Couldn't fetch news right now" |
+| Ollama not running | "Could not reach Ollama. Make sure the Ollama app is running." |
+| Model not pulled | "Model '…' not found. Run: ollama pull …" |
+| Model ignores output format | Label shown as "Unclear" with the raw reply |
 
 ## Known limitations
 
 - Uses only ~3–10 recent headlines; not deep financial analysis.
 - A 3B model may misjudge tone or occasionally ignore the output format (shown as "Unclear").
 - Requires internet for yfinance and a running Ollama.
+- "Ticker not found" relies on yfinance price history; if that lookup itself fails, the app falls back to the "no recent news" message.
+
+See [docs/llm_evaluation.md](docs/llm_evaluation.md) for a human-vs-model comparison across several tickers.

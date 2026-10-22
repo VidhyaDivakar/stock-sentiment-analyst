@@ -1,4 +1,21 @@
-.venv/
+# Python
 __pycache__/
+*.py[cod]
+
+# Virtual environment (recreate with `uv sync`)
+.venv/
+
+# Tooling caches
 .pytest_cache/
+
+# Secrets / local config
 .env
+.streamlit/secrets.toml
+
+# Local app data
+recent_searches.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
